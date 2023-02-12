@@ -1,0 +1,1084 @@
+
+***Warning: Due to different modelling needs, different parts of the database are handled differently, so please check carefully!
+
+——-
+Step I: Data Preparation & Exploration
+---
+```{r}
+library(tidyverse)
+library(naniar)
+paris_listings <- read_csv('/Users/auro/Downloads/paris_listings.csv')
+XI_Arrondissement <- paris_listings %>% filter(host_neighbourhood=='XI Arrondissement')
+```
+### Missing Values
+```{r}
+library(dplyr)
+library(tidyr)
+# missing percentage
+miss_var_summary(XI_Arrondissement)
+# select useful columns
+XI <- subset(XI_Arrondissement, select = c(host_verifications, neighbourhood_cleansed, latitude, longitude, property_type, room_type, accommodates, bathrooms_text, bedrooms, beds, amenities, number_of_reviews, instant_bookable, price, host_is_superhost, review_scores_checkin, review_scores_location, review_scores_value, review_scores_communication, review_scores_accuracy, review_scores_cleanliness, review_scores_rating, reviews_per_month))
+```
+
+If bed = 1, then bedroom must = 1.
+Assume if bed = 2, bedroom = 1.
+```{r}
+# fill in missing values for column 'bedrooms'
+XI$bedrooms <- ifelse(XI$beds == 1, 1, XI$bedrooms)
+XI$bedrooms <- ifelse(XI$beds == 2, 1, XI$bedrooms)
+sum(is.na(XI$bedrooms))
+```
+
+```{r}
+# drop missing values from beds and bedrooms
+XI <- XI %>% drop_na(beds, bedrooms)
+```
+
+```{r}
+# check how many missing value remaining
+miss_var_summary(XI)
+```
+
+```{r}
+# extract numbers from text
+XI <- XI %>% mutate(bathrooms = readr::parse_number(XI$bathrooms_text))
+# fill in missing values with 0.5
+XI$bathrooms[is.na(XI$bathrooms)] <- 0.5
+```
+
+```{r}
+# total rows in original data
+nrow(XI_Arrondissement)
+```
+
+```{r}
+# how many rows now
+nrow(XI)
+```
+
+First, we looked at the missing value summary of our data and removed columns that contain more than 20% missing values. The reason for this is that when we checked these variables we found that we could not use any method to populate the data (by inserting with statistics method), and we also wanted to clean up the missing value while maintaining the integrity of the entire data. Then we subset data we thought we will going to need. For variables have missing value between 10% to 20%, we thought they would be important indicators, so we decided to keep them. Secondly, our common sense tells us that the value of the variable ‘bedrooms’ is highly associated with ‘beds’, and we came out with the conclusion that if bed = 1, then the bedroom must = 1. So we insert ‘1’ to the missing part of ‘bedrooms’ where ‘bed’ is 1. After doing that, we found out that there are only a few portion of ‘bedrooms’. In the rows where ‘bed’ has data and ‘bedrooms’ is still missing, ‘bed’ is equal to 2. We concluded that in these rooms there is either one bed or two beds and finally we decided to fill all these rows with bedrooms as 1. After that, we dropped the missing values from ‘bed’ and ‘bedrooms’. Additionally, we found that the data type is text for variable ‘bathoom_text’, but we definitely want a numeric value for this. What we did was extract the number from this variable using function parse_number(). We then got warning message saying there were 5 parsing failures. We end up with inserting those with 0.5 because we found out that they were all half bath. The total row for the original data is 1227 and after cleaning it has 1195 rows. The data is subject to change as further analysis needs.
+
+### Summary Statistics
+What is the average bed number in this neighborhood?
+```{r}
+library(psych)
+describe(XI$beds)
+```
+The average bed number in this neighborhood is 1.58, with median of 1 and standard deviation of 0.88. The max bed is 7 and the min bed is 1.
+
+What is the price range of this neighborhood?
+```{r}
+summary(XI$price)
+```
+The min price in this neighborhood is 15 euro, while the max is 850. The median is 85.73 and the mean is 71.
+
+What is the average price per bed? per accommodate?
+```{r}
+mean(XI$price)/mean(XI$beds)
+```
+```{r}
+mean(XI$price)/mean(XI$accommodates)
+```
+The average price per bed is 54 euro, and the average price per accommodate is 30.
+
+What are the types of property? How many they each have?
+```{r}
+table(XI$property_type) %>% 
+  as.data.frame() %>% 
+  arrange(desc(Freq))
+```
+There are 949 entire rental units, 138 private room in rental unit, 43 entire condo, and 21 entire loft. It looks like most of people prefer to live in a entire rental unit.
+
+5. What is the correlation between beds and accommodation?
+```{r}
+cor(XI$beds, XI$price, method = 'pearson')
+```
+The correlation between beds and accommodation is 0.5, which indicates they are moderately correlated. 
+
+### Data Visualization
+```{r}
+# bubble plot
+ggplot(XI, aes(x=neighbourhood_cleansed, y=room_type)) + 
+  geom_count(colour="cornflowerblue", alpha = 0.7) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.8, hjust=1)) + 
+   labs(x="neighbourhood names", 
+       y="room type",
+       title="counting room types in different neighbourhoods in XI Arrondissement")
+```
+
+On this graph, we can see the distribution of the different room types between the different neighborhoods. The size of the circle represents the number of rooms. We can see that there are the most rooms in the Popincourt area.
+
+```{r}
+ggplot(XI, aes(x=accommodates, fill=room_type)) + 
+ geom_histogram(aes(y=..count..), bins = 20, alpha = 0.7)+
+ labs(title="Distribution of the number of people that can be accommodated")
+```
+
+The y-axis represents the number count of a certain number of accommondates, and the x-axis shows the accommodate numbers. The color shows different room types. This chart clearly shows us that in the vast majority of our neighborhood areas, the Airbnb rental house are entire home/apt. There's nearly no hotel room listed on Airbnb.
+```{r}
+XI %>% group_by(neighbourhood_cleansed) %>% summarise(meanPrice = mean(price)) %>%
+  ggplot(aes(x = reorder(neighbourhood_cleansed,-meanPrice), y = meanPrice)) +
+  geom_col(fill = "cornflowerblue", width = 0.7, alpha = 0.7)+
+  labs(title="average price each neighborhood",
+       x='neighborhood name',
+       y='average price') + 
+  theme(axis.text.x = element_text(angle=45, vjust=0.6))
+```
+
+This graph shows the average price in our neighborhood. Palais-Bourbon has the highest average price while Buttes-Chaumont has the lowest. Although the Popincourt area has the most rental listings, it is at the back of the list in terms of average price.
+
+```{r}
+ggplot(XI, aes(accommodates, price)) +
+  geom_jitter(alpha = 0.7, width = 0.5, size = 2, aes(colour = room_type)) +
+  labs(title="accommodates vs. price")
+```
+
+This graph shows the relationship between the number of accommodate and the price. It is easy to see that the more people available to live in the property, the higher the price. At the same time, private and shared rooms are generally less expensive.
+
+```{r}
+qplot(x=neighbourhood_cleansed, y=price/accommodates, data=XI, geom='boxplot') +
+  theme(axis.text.x = element_text(angle=45, vjust=0.6)) +
+  labs(title="average price per person",
+       x='average price',
+       y='neiborhood name')
+```
+This graph shows the median, lower quartile and higher quartile average of each neighborhood. Although the median in the Popincourt area is not high, outliers are plentiful, meaning that there are some more expensive properties to choose from in the area.
+
+### Wordcloud
+```{r}
+library(tidytext)
+library(dplyr)
+library(wordcloud2)
+library(stopwords)
+library(RColorBrewer)
+library(tm)
+tidy_XI <- XI_Arrondissement %>% select(neighborhood_overview) %>% 
+  drop_na() %>%
+  unnest_tokens(word, neighborhood_overview)
+stop_french <- data.frame(word = stopwords("fr"), stringsAsFactors = FALSE)
+stop_french[nrow(stop_french) + 1,] <- 'br'
+tidy_XI <- tidy_XI %>% 
+  anti_join(stop_words, by = c('word')) %>%
+  anti_join(stop_french, by = c('word'))
+set.seed(1234)
+tidy_XI %>%
+  count(word, sort = TRUE) %>%
+  wordcloud2(size = 0.7, shape = 'circle')
+```
+Most frequent words: restaurants, bastille(a historically significant prison), quartier(district), bars, lachaise(Père Lachaise Cemetery, a very famous park), minutes, paris, bars.
+From wordcloud, we can see that people who come here are most concerned about food, followed by tourist attractions.
+
+### Mapping
+```{r}
+library(leaflet)
+leaflet()%>%
+  addTiles()%>%
+  addCircles(lng=XI$longitude, lat=XI$latitude)
+```
+
+While most of the points are within our neighborhood, there are some points that are far away. We think this may be caused by the host filling out the neighborhood information incorrectly.
+
+```{r}
+heat_data <- table(XI[, c('property_type','neighbourhood_cleansed')])
+heat_data <- as.matrix(heat_data)
+heatmap(heat_data, scale="row", Colv = NA, Rowv = NA, col= colorRampPalette(brewer.pal(8, "Blues"))(25))
+```
+In our neighborhood, almost all the houses are located in one district, Popincourt, and it is worth noting that only the rooms in the Palais-Bourbon are boats.
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+
+---
+Step II: Prediction
+---
+```{r}
+r = getOption("repos")
+r["CRAN"] = "http://cran.us.r-project.org"
+options(repos = r)
+install.packages('tinytex')
+tinytex::install_tinytex()
+```
+
+## Step 2. Prediction
+```{r}
+library(tidyverse)
+library(naniar)
+library(dplyr)
+library(tidyr)
+paris_listings <- read.csv('paris_listings.csv')
+XI_Arrondissement <- paris_listings %>% filter(host_neighbourhood=='XI Arrondissement')
+```
+
+```{r}
+# drop the missing value which are > 20%
+XI1 <- subset(XI_Arrondissement, select = - c(neighbourhood_group_cleansed, 
+                                              bathrooms, calendar_updated, 
+                                              review_scores_checkin, 
+                                              review_scores_location, 
+                                              review_scores_value, 
+                                              bedrooms, 
+                                              review_scores_communication, 
+                                              review_scores_accuracy,
+                                              review_scores_cleanliness)) 
+#drop the variables have no influence on price
+XI2 <- XI1[-c(1:17,19:28,32,36,38:56,58:64)]
+#extract number form the bathroom_text
+XI3 <- XI2 %>% mutate(bathrooms = readr::parse_number(XI2$bathrooms_text))
+XI3$bathrooms[is.na(XI3$bathrooms)] <- 0.5
+XI4 <- XI3[-c(6)]
+#deal with the remained missing value
+XI4$review_scores_rating [is.na(XI3$review_scores_rating)] <- median(XI4$review_scores_rating,na.rm = TRUE)
+list <-which(rowSums(is.na(XI4)) > 0) 
+XI4miss <- XI4[list,]
+table(XI4miss$accommodates)
+XI4[is.na(XI4)] <-  1
+str(XI4)
+```
+
+```{r}
+#reduce the levels of "property_type"
+table(XI4$property_type)
+XI4$property_type[XI4$property_type == "Private room in rental unit"] <- "Shared Unit"
+XI4$property_type[XI4$property_type == "Private room in residential home"] <- "Shared Unit"
+XI4$property_type[XI4$property_type == "Private room in townhouse"] <- "Shared Unit"
+XI4$property_type[XI4$property_type == "Private room in guesthouse"] <- "Shared Unit"
+XI4$property_type[XI4$property_type == "Private room in loft"] <- "Shared Unit"
+XI4$property_type[XI4$property_type == "Private room in condominium (condo)"] <- "Shared Unit"
+XI4$property_type[XI4$property_type == "Room in boutique hotel"] <- "Shared Unit"
+XI4$property_type[XI4$property_type == "Shared room in condominium (condo)"] <- "Shared Room"
+XI4$property_type[XI4$property_type == "Shared room in guesthouse"] <- "Shared Room"
+XI4$property_type[XI4$property_type == "Shared room in rental unit"] <- "Shared Room"
+XI4$property_type[XI4$property_type == "Entire condominium (condo)"] <- "Entire Unit"
+XI4$property_type[XI4$property_type == "Entire loft"] <- "Entire Unit"
+XI4$property_type[XI4$property_type == "Entire rental unit"] <- "Entire Unit"
+XI4$property_type[XI4$property_type == "Entire residential home"] <- "Entire Unit"
+XI4$property_type[XI4$property_type == "Entire townhouse"] <- "Entire Unit"
+XI4$property_type[XI4$property_type == "Boat"] <- "Entire Unit"
+```
+
+```{r}
+#dummy the categorical variables 
+install.packages("fastDummies")
+library(fastDummies)
+XI_new <- dummy_cols(XI4, 
+                   select_columns = "property_type",remove_first_dummy=TRUE,
+                   remove_selected_columns=TRUE)
+XI_new <- dummy_cols(XI_new, 
+                   select_columns = "host_is_superhost",remove_first_dummy=TRUE,
+                   remove_selected_columns=TRUE)
+str(XI_new)
+```
+
+
+
+```{r}
+#check the correlation of all the variables
+install.packages("corrplot")
+library(corrplot)
+corr_matrix <- cor(XI_new,use="complete.obs")
+corr_matrix2 <- round(corr_matrix,4)
+corrplot(corr_matrix2)
+
+```
+
+```{r}
+cor(XI_new,use="complete.obs")
+```
+```{r}
+#Drop the variable with correlation > 0.75
+XI_new <- subset(XI_new, select = - c(beds)) 
+```
+
+```{r}
+#further ensure there is no missing value 
+sum(is.na(XI_new))
+#build the MLR Model
+set.seed(440)
+train.mul <- sample_frac(XI_new, 0.6)
+valid.mul <- setdiff(XI_new, train.mul)
+```
+
+```{r}
+XI.lm <- lm(price~.,data=train.mul)
+options(scipen=999)
+summary(XI.lm)
+```
+
+```{r}
+#Use backward elimination method to help us further reduce the predictors
+XI.lm.step <- step(XI.lm, direction = "backward") 
+summary(XI.lm.step)
+```
+
+Price=-733.037longitude+17.196accommodates+33.647bathrooms-15.980property_type_Shared Unit+14.751 host_is_superhost_t-733.037 
+
+```{r}
+# check wthere there is multicollinearity.
+install.packages("car")
+library(car)
+```
+
+```{r}
+vif(XI.lm.step)
+```
+
+```{r}
+# check the metrics of the model
+library(forecast)
+XI.lm.step.pre <- predict(XI.lm.step,train.mul)
+accuracy(XI.lm.step.pre,train.mul$price)
+```
+
+```{r}
+XI.lm.step.pre1 <- predict(XI.lm.step,valid.mul)
+accuracy(XI.lm.step.pre1,valid.mul$price)
+```
+```{r}
+sd(train.mul$price)
+```
+
+### 2.a  
+After checking the structure of data frame, we found that the data has 1227 rows and 74 variables. In order to avoid the problem of overfitting, we must preprocess these variables and choose the most important variables (which will have significant influence on the “price”) to build the multiple linear regression model.
+Firstly, have dealt with the missing value. In order to guarantee the accuracy of the model, we decide to delete the variables with about or near 20% of missing values. These variables are:
+ *“neighbourhood_group_cleansed”, “bathrooms”, “calendar_updated”, “review_scores_checking”, “review_scores_location”, “review_scores_value”, “bedrooms”, “review_scores_communication”, “review_scores_accuracy”, “review_scores_cleanliness”.*
+
+Then we delete the information which obviously has no influence on “price”, such as the variables related to time. This information has no power in the further steps, which are
+ 
+*“id", "listing_url", "scrape_id",  "last_scraped", "name", "description”, "neighborhood_overview", "picture_url", "host_id, "host_url”, "host_name", "host_since", "host_location", "host_about", "host_response_time", "host_response_rate", "host_acceptance_rate",  "host_is_superhost", "host_thumbnail_url", "host_picture_url”, "host_neighbourhood", "host_listings_count", "host_total_listings_count", "host_verifications", "host_has_profile_pic", "host_identity_verified", "neighbourhood", "neighbourhood_cleansed", "neighbourhood_group_cleansed", "room_type", “amenities", “minimum_nights", "maximum_nights", "minimum_minimum_nights",  "maximum_minimum_nights",  "minimum_maximum_nights", "maximum_maximum_nights”, "minimum_nights_avg_ntm", "maximum_nights_avg_ntm”, "has_availability", "availability_30", "availability_60", "availability_90", "availability_365", "calendar_last_scraped", "number_of_reviews", "number_of_reviews_ltm", "number_of_reviews_l30d", "first_review","last_review", "license", "instant_bookable", "calculated_host_listings_count", "calculated_host_listings_count_entire_homes", "calculated_host_listings_count_private_rooms", "calculated_host_listings_count_shared_rooms", "reviews_per_month".*    
+ 
+Then we checked the variables that **remain** in the data frame, which are 
+**"host_is_superhost", "latitude", "longitude", "property_type", "accommodates", "beds", "price", "review_scores_rating" and "bathrooms_text".**
+
+We use structure to further check these variables. We can see there are three variables and 3 categorical variables and 5 numerical variables (except “price”). 
+Firstly, we check is there any missing value still in this data frame? Then we found that there are still missing values in the variable of “beds”, “review_scores_rating”. Since the percent of these low, we decide to replace this missing value. For the variable of “review_scores_rating”, we decide to replace the missing values with the median value.
+Then we build a new data frame for the missing value rows of bed and check the relationship between bed and other variables. We assume that the when the accommodate =1 or =2, the number of beds will be one. Then we use table function to check the frequency of the “accommodates”. We can see that for the 31 accommodates, 27 of accommodates are 1 or 2, so here we simply use number 1 to replace all the 31 missing values in “beds” variable.  
+Then we check the categorical variables, which are “property_type”, “bathroom_text” and “host_is_superhost”. Firstly, we check the bathroom_text, it is about how many bathrooms and what kind of bathroom in the Airbnb, like 1 private bathroom or 1.5 shared bathroom, we think the number of the bathroom in the Airbnb will influence the price, so we extract the number of bathrooms from the bathroom_text and named it bathroom”. Also, we deleted the variable “bathroom_text”. 
+Then we checked the variable “property_time”, we use table function to see the frequency and numbers of unique levels of this variable. We can see it has 14 unique values. In order to avoid the overfitting problem, we decide to summarize them and reduce the levels. Since the values of the variable is like “Entire loft”, “Private room in a xx”, “shared room in a xx”. We decide to summarize into three levels, “Entire Unit”, “Shared Unit” and “Shared room”. We also think the property type will significantly influence the price. For example, we guess the entire unit must be expensive than a shared room in the same condition. 
+For the host_is_superhost, which indicate that whether a host is a superhost, t is true and f is false. Since we tend to choose the super host’s Airbnb, we guess it may have the influence on the price, but maybe not directly. Hence, we decide to remain this variable and use MLR with “backward” step later to examine whether our consideration is right.
+For the variable “accommodate”, we think it must have significant influence on price. But we worried about whether it has high correlation with “beds”, so we will check the correlationship later to avoid the multicollinearity.
+For the variable “"latitude","longitude", we think the location of the Airbnb will influence the price, so we decide to keep it.
+For the "review_scores_rating", we are not sure whether it will has directly influence on the price. Perhaps the higher rating score, people will tend to live here. Then the price will be high, so we will keep it.
+Then in the preprocessing step, we dummy all the categorical variables, and convert them into binary numerical variables.
+Finally before build the model, we check the correlationship of all the remaining variables to avoid the multicollinearity. We found that the correlation between beds and accommodates are high, which is 0.819 (>0.75), so we decide to remove one of the two variables. Since the variable "beds" has the missing value in the original data frame, we will remove this variable. 
+
+2.b  
+Then we use all the remaining variables to build the linear regression model. In order to further ensure all the predictors will be relevant to measure the outcome, we use the method of “backward elimination” to find the best subset of the predictors. The equation of this MLR is:  **Price=-733.037longitude+ 17.196accommodates+ 33.647bathrooms- 15.980property_type_Shared Unit+ 14.751 host_is_superhost_t-733.037** The variable “rating score” is not relevant to the price, so the model has dropped it automatically. We can see that in the range of XI Arrondissement, the lower longitude, the higher price will be. Every time we reduce the longitude by 0.01, the price will reduce 7.33 dollars. When we check the map, we can see the low longitude means near the central of Paris, so we can conclude that when the location of the Airbnb is nearer the central of Paris, the price will increase. Also, every time the number of accommodates increase, the price will increase. When the number of accommodates increases by 1, the price will increase by 17.196. When we increase the number of bathrooms, the increase of price will be more significant. Every time we add one bathroom in the Airbnb, the price of Airbnb will increase by 33.647. However, when the host owns a property type of shared unit, there price will decrease by 15.98. (Here we can enter the number only with 1 or 0, 1 indicates the type is shared unit and 0 indicates not). Finally, if the owner is a super host, the price of Airbnb will increase by 14.751.     
+Hence, we can finally conclude that if the host want to charge a higher price, they can prepare the Airbnb near the central of Paris, with more bathrooms, which can contain more visitors (may be a bigger house), it’s better for the host to rent the entire unit and they can try to become a super host. Then they can charge more money.
+
+2.c  
+After that, we check the quality of our model. Firstly, we have a look at the r- squared, which is 0.3325. Since it is low, so we decide to further check the VIF value of each variable, to ensure that they don’t have the problem of multicollinearity. Since the VIF value of all the variables are lower than 5. We know that the problem of multicollinearity doesn’t exist.  
+Then we further check the accuracy of both train model and test model. The RMSE and MAE of both valid and train model is quite similar. The RMSE of train model is 46 and of valid model is 49, the difference of them is smaller than 20%. Also, the MAE of both train set, and valid set are almost the same.  We further checked the standard deviation of the train set, which is 57, smaller than its RMSE. Hence, we can see the model performs well and have a good fitness of two sets. We will use this model to make prediction later. 
+
+---
+Step III: Classiﬁcation
+Part I. k-nearest neighbors
+---
+### AD 699 Final Knn model
+**Loading Packages** 
+```{r}
+library(rmarkdown)
+library(tidyverse)
+library(naniar)
+library(dplyr)
+library(tidyr)
+library(caret)
+library(class)
+library(dplyr)
+library(e1071)
+library(FNN)
+library(gmodels)
+library(psych)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(tm)
+```
+**Reading csv & preprocess data**
+```{r}
+setwd('/Users/t/Desktop')
+paris_listings <- read_csv('paris_listings.csv')
+XI_Arrondissement <- paris_listings %>% filter(host_neighbourhood == 'XI Arrondissement')
+
+miss_var_summary(XI_Arrondissement)
+
+XI <- subset(XI_Arrondissement, select = c(neighbourhood_cleansed, latitude, longitude, 
+                                           property_type, accommodates, bathrooms_text, 
+                                           bedrooms, beds, amenities, number_of_reviews, 
+                                           price, minimum_nights, maximum_nights))
+XI$bedrooms <- ifelse(XI$beds == 1, 1, XI$bedrooms)
+XI$bedrooms <- ifelse(XI$beds == 2, 1, XI$bedrooms)
+XI <- XI %>% drop_na(beds, bedrooms)
+XI <- XI %>% mutate(bathrooms = readr::parse_number(XI$bathrooms_text))
+XI$bathrooms[is.na(XI$bathrooms)] <- 0.5
+```
+**Wordcloud**
+```{r}
+XI2 <- XI
+
+amt <- as.data.frame(XI2$amenities)
+
+amt2 <- XI2
+amt2 <- subset(amt2, amt2$number_of_reviews > 75)
+amt2 <- as.data.frame(amt2$amenities)
+
+# Wordcloud for all airbnbs
+crp <- VCorpus(VectorSource(amt)) 
+crp_cln <- tm_map(crp, stripWhitespace) 
+crp_cln <- tm_map(crp_cln, removePunctuation) 
+crp_cln <- tm_map(crp_cln, removeNumbers) 
+crp_cln <- tm_map(crp_cln, content_transformer(tolower))
+crp_cln <- tm_map(crp_cln, removeWords,stopwords('en')) 
+crp_cln <- tm_map(crp_cln, stemDocument)
+
+tdm <- TermDocumentMatrix(crp_cln)
+
+mtx <- as.matrix(tdm)
+term_freq <- rowSums(mtx) 
+term_freq <- sort(term_freq, decreasing=TRUE) 
+word_freqs <- data.frame(term=names(term_freq),num=term_freq)
+
+set.seed(699) # for reproducibility 
+wordcloud(words = word_freqs$term, freq = word_freqs$num, min.freq = 10, 
+          max.words=40, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+# Wordcloud for airbnbs with number of reviews greater than 75
+crp2 <- VCorpus(VectorSource(amt2))
+crp_cln2 <- tm_map(crp2, stripWhitespace) 
+crp_cln2 <- tm_map(crp_cln2, removePunctuation) 
+crp_cln2 <- tm_map(crp_cln2, removeNumbers) 
+crp_cln2 <- tm_map(crp_cln2, content_transformer(tolower))
+crp_cln2 <- tm_map(crp_cln2, removeWords,stopwords('en')) 
+crp_cln2 <- tm_map(crp_cln2, stemDocument)
+
+tdm2 <- TermDocumentMatrix(crp_cln2)
+
+mtx2 <- as.matrix(tdm2) 
+term_freq2 <- rowSums(mtx2) 
+term_freq2 <- sort(term_freq2, decreasing=TRUE) 
+word_freqs2 <- data.frame(term=names(term_freq2),num=term_freq2)
+
+set.seed(699) # for reproducibility 
+wordcloud(words = word_freqs2$term, freq = word_freqs2$num, min.freq = 10, 
+          max.words=40, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+```
+**Choosing & testing amenity**
+```{r}
+df <- grepl("workspace", XI2$amenities, ignore.case = T)
+df <- as.data.frame(df)
+df <- df * 1 # Convert T/F to 1/0
+df$df <- as.factor(df$df)
+XI2$factor <- df
+# Note that because k-NN involves calculating distances between data-points, we must use numeric 
+# variables only. This only applies to the predictor variables. The outcome variable for k-NN 
+# classification should remain a factor variable.
+XI3 <- select(XI2, 2, 3, 5, 7, 8, 10, 11, 12, 13, 14, 15)
+table(XI3$factor) # 493 no workspace, 702 has workspace. 
+```
+**Choosing numerical predictors & preprocess data for knn**
+```{r}
+# Create training and validation sets
+set.seed(699)
+train <- sample_frac(XI3, 0.6)
+valid <- setdiff(XI3, train)
+
+copy <- train
+E1 <- copy %>% filter(factor==1) %>% select(1:10)
+E0 <- copy %>% filter(factor==0) %>% select(1:10)
+
+m1 <- colMeans(E1)
+m0 <- colMeans(E0)
+
+# Percentage difference in mean
+PD <- (abs(m1 - m0) / ((m1 + m0) / 2)) * 100
+PD
+
+# Drop latitude, longitude, accommodates, beds, bathrooms(PD lower than 5%)
+train <- select(train, -1, -2, -3, -5, -10)
+valid <- select(valid, -1, -2, -3, -5, -10)
+XI4 <- select(XI3, -1, -2, -3, -5, -10)
+
+train.norm <- train
+valid.norm <- valid
+XI4.norm <- XI4
+
+# Predict any rental
+new <- data.frame(bedrooms = 2, number_of_reviews = 80, price = 95, minimum_nights = 1, 
+                  maximum_nights =1000)
+
+# preProcess()
+norm.values <- preProcess(train[, c(1:5)], method = c("center", "scale"))
+train.norm[, c(1:5)] <- predict(norm.values, train[, c(1:5)])
+valid.norm[, c(1:5)] <- predict(norm.values, valid[, c(1:5)])
+XI4.norm[, c(1:5)] <- predict(norm.values, XI4[, c(1:5)])
+new.norm <- predict(norm.values, new)
+```
+**K-nearest neighbors model**
+```{r}
+# Compute knn
+nn <- knn(train = train.norm[, c(1:5)], test = new.norm, 
+          cl = train.norm[, 5, drop = TRUE], k = 5)
+nn
+
+row.names(train)[attr(nn, "nn.index")]
+
+# Predicted classification for my rental
+XI4$factor <- as.numeric(unlist(XI4$factor))
+XI4$factor <- as.factor(XI4$factor)
+PC <- XI4[c(335, 521, 54, 431, 277), 1:6]
+PC
+```
+**Accuracy & k plot**
+```{r}
+# Pre process for accuracy
+train.norm$factor <- as.numeric(unlist(train.norm$factor))
+train.norm$factor <- as.factor(train.norm$factor)
+
+valid.norm$factor <- as.numeric(unlist(valid.norm$factor))
+valid.norm$factor <- as.factor(valid.norm$factor)
+
+str(train.norm)
+str(valid.norm)
+
+# Accuracy
+accuracy <- data.frame(k = seq(1, 15, 1), accuracy = rep(0, 15))
+
+for(i in 1:15) {
+  knn.pred <- knn(train.norm[, c(1:5)], valid.norm[, c(1:5)], 
+                  cl = train.norm[, 6, drop = TRUE], k = i)
+  accuracy[i, 2] <- confusionMatrix(knn.pred, 
+                                    valid.norm[, 6, drop = TRUE])$overall[1]
+}
+
+accuracy # The optimal k-value is 5, with the accuracy of 0.6317992.  
+
+# plot of k 
+ggplot(data = accuracy, aes(x=k, y=accuracy)) + geom_point(color = 'blue')
+```
+**Conclusion:**
+In this part, I used K-nearest neighbors to predict whether a rental in my neighborhood will 
+have some particular amenities. To pick the amenity, first, we run two wordclouds. The first 
+one is the highest word frequency among all the Airbnbs in my neighbors. The second one is 
+the highest word frequency with the number of reviews greater than 75. This way we can avoid some 
+basic amenities that all properties have such as WiFi and alarm. By comparing these two 
+wordclouds, the outcome variable we decided is “workspace”. 
+
+Hence, the outcome variable we decided is “workspace”. By running the grepl() function, we 
+found that out of 1195 Airbnbs. 493 has no workspace and 702 has workspace. Then we added a 
+new column to the data frame, Airbnbs with workspace had a factor of 1, and Airbnbs without 
+factors had a factor of 0. Then we selected the following numerical value from the data set, which 
+included latitude, longitude, accommodates, bedrooms, bed, the number of reviews, price, minimum 
+nights, maximum nights, and bathrooms. Then we created a training set and validation set. 
+First, we calculated the percentage difference in mean to remove the variable with the 
+percentage difference in mean less than 5%. Less than 5% percentage difference in mean could 
+case overfitting to the model. The columns we kept are bedrooms, number of reviews, price, 
+minimum nights, and maximum nights. Then we pre-process the data and built a k-nn model. 
+To test the accuracy and find the optimal k value, we used a for loop. The optimal k-value is 
+5, with the accuracy of 0.6317992. With the optimized k value, we re-run our k-nn model.  The 
+result is that 3 out of 5 Airbnbs have workspace for our prediction model: 2 bedrooms, 80 reviews, 
+95 prices, 1 minimum night, and 1000 maximum nights Airbnb. 
+
+
+
+---
+Step III: Classiﬁcation
+Part II. Naive Bayes
+---
+
+```{r}
+library(tidyverse)
+library(naniar)
+library(caret)
+library(forecast)
+library(Ecdat)
+library(e1071)
+```
+
+#Pour in data
+```{r}
+paris<-read_csv('paris_listings.csv')
+arron.11<-filter(paris, host_neighbourhood=='XI Arrondissement') #XI Arrondissement
+miss.value<-miss_var_summary(arron.11)
+```
+#View the proportion of dependent variable
+```{r}
+table(arron.11$instant_bookable)
+```
+
+#View the percentage of missing data
+```{r}
+table(arron.11$maximum_nights)
+sum(is.na(arron.11$maximum_nights))
+```
+1 round Selected Inputs:
+accommodates
+availability_30
+bathrooms_text
+bedrooms
+beds
+has_availability
+host_has_profile_pic
+host_identity_verified
+host_is_superhost
+maximum_nights
+minimum_nights
+neighbourhood_cleansed
+number_of_reviews_ltm
+price
+property_type
+review_scores_accuracy
+review_scores_location
+review_scores_rating
+room_type
+
+#Handling missing values of selected variables
+beds #missing 31 -> drop
+review_scores_accuracy #missing 227 -> drop
+review_scores_location #missing 229 -> drop
+review_scores_rating #missing 203 -> drop
+```{r}
+arron.11 <- arron.11 %>% drop_na(beds,review_scores_accuracy, review_scores_location, review_scores_rating)
+```
+
+#Bin the number variables
+```{r}
+arron.11$minimum_nights<-cut(arron.11$minimum_nights, breaks = c(0,1.5,365),
+                             labels = c("1 night", ">1 night"))
+
+arron.11$availability_30<-cut(arron.11$availability_30, breaks = c(-1,1,15,30),
+    labels = c("Not avaliable", "1-15", "15-30"))
+
+arron.11$number_of_reviews_ltm<-cut(arron.11$number_of_reviews_ltm, breaks = c(-1,0,1000),
+                              labels = c("Yes", "No"))
+
+arron.11$price<-round(arron.11$price/arron.11$accommodates)
+arron.11$price<-cut(arron.11$price, breaks = c(1,15,50,100,200),
+                                    labels = c("Below average $14", "15-50","50-100","100-200"))
+
+arron.11$accommodates<-cut(arron.11$accommodates, breaks = c(0,2.5,4.5,8.5,13),
+                    labels = c("1~2", "3~4","5~8","9~12"))
+
+arron.11$review_scores_accuracy<-as.factor(round(arron.11$review_scores_accuracy))
+arron.11$review_scores_location<-as.factor(round(arron.11$review_scores_location))
+arron.11$review_scores_rating<-as.factor(round(arron.11$review_scores_rating))
+arron.11$beds<-as.factor(arron.11$beds)
+```
+
+#Plot to see if choosen variables impact instant bookable rank by #1~#5
+```{r}
+ggplot(arron.11,aes(x=minimum_nights, fill=instant_bookable))+geom_bar(position="fill")#4
+ggplot(arron.11,aes(x=accommodates, fill=instant_bookable))+geom_bar(position="fill")#3
+ggplot(arron.11,aes(x=bathrooms_text, fill=instant_bookable))+geom_bar(position="fill")#5
+ggplot(arron.11,aes(x=bedrooms, fill=instant_bookable))+geom_bar(position="fill")#2
+ggplot(arron.11,aes(x=beds, fill=instant_bookable))+geom_bar(position="fill")#5
+ggplot(arron.11,aes(x=host_has_profile_pic, fill=instant_bookable))+geom_bar(position="fill")#5
+ggplot(arron.11,aes(x=host_identity_verified, fill=instant_bookable))+geom_bar(position="fill")#3
+ggplot(arron.11,aes(x=host_is_superhost, fill=instant_bookable))+geom_bar(position="fill")#4
+ggplot(arron.11,aes(x=neighbourhood_cleansed, fill=instant_bookable))+geom_bar(position="fill")#5
+ggplot(arron.11,aes(x=property_type, fill=instant_bookable))+geom_bar(position="fill")#4
+ggplot(arron.11,aes(x=room_type, fill=instant_bookable))+geom_bar(position="fill")#4
+ggplot(arron.11,aes(x=availability_30, fill=instant_bookable))+geom_bar(position="fill")#2
+ggplot(arron.11,aes(x=number_of_reviews_ltm, fill=instant_bookable))+geom_bar(position="fill")#2
+ggplot(arron.11,aes(x=price, fill=instant_bookable))+geom_bar(position="fill")#2
+ggplot(arron.11,aes(x=review_scores_accuracy, fill=instant_bookable))+geom_bar(position="fill")#2
+ggplot(arron.11,aes(x=review_scores_location, fill=instant_bookable))+geom_bar(position="fill")#2
+ggplot(arron.11,aes(x=review_scores_rating, fill=instant_bookable))+geom_bar(position="fill")#5
+```
+#2nd round Selected Inputs:
+After this step, we only keep #4 and #5 variables(minimum_nights, bathrooms_text, beds, host_has_profile_pic, neighbourhood_cleansed, property_type, room_type, and review_scores_rating) because there are clear differences in the extent to which the factors within these variables affect the dependent variable.
+
+#Randomly select 60% train data and 40% valid data with seed=370.
+```{r}
+set.seed(370)
+train.df<-sample_frac(arron.11, 0.6)
+valid.df<-setdiff(arron.11, train.df)
+```
+
+#Model building
+```{r}
+book.nb <- naiveBayes(instant_bookable ~
+                       beds
+                      +host_has_profile_pic
+                      +host_is_superhost
+                      +property_type
+                      +room_type
+                      +review_scores_rating, data = train.df)
+book.nb
+```
+#3nd round Selected Inputs:
+After dropping minimum_nights, bathrooms_text, and neighbourhood_cleansed, there is a significant improvement in accuracy.
+We only keep beds, host_has_profile_pic, host_is_superhost, property_type, room_type, review_scores_rating in the model.
+
+#Validation of validity
+```{r}
+pred.source<-predict(book.nb, newdata=train.df)
+confusionMatrix(pred.source, as.factor(train.df$instant_bookable))
+
+pred.source.vs<-predict(book.nb, newdata=valid.df)
+confusionMatrix(pred.source.vs, as.factor(valid.df$instant_bookable))
+```
+#Valid data is more accurate in validation than train data(0.7809 vs 0.777), and more accurate than simply classifying categories as mostly variables(instant_bookable=FALSE, 0.7770).
+
+```{r}
+fic.room<-data.frame(beds='1',
+           host_has_profile_pic="TRUE",
+           host_is_superhost="TRUE",
+           property_type="Entire loft",
+           room_type="Private room",
+           review_scores_rating='5')
+pred.class.ficp<-predict(book.nb, fic.room)
+pred.prob.ficp<-predict(book.nb, fic.room,type = 'raw')
+pred.class.ficp;pred.prob.ficp
+```
+#I'm assuming I'm going to travel there. I am going alone so I need a bed. A host picture will give me confidence so I need to see it. I also hope the host is a superhost. I want it to be entire loft and private room with a rating close to 5. Unfortunately, this fake great house is not instant bookable.
+
+In this section, I performed 3 rounds of sieving of the independent variables. In the 1st round I selected the variables that I thought were relevant to the booking of the room. In the 2nd round I eliminated the independent variables that had a small effect on the dependent variable by drawing a graph. In the 3d round I removed a few independent variables that had a significant impact on the prediction accuracy of the model. I first converted the data into factors. Then I divided the complete data into a train set and a valid set, in a ratio of 60%:40%.  Finally, I built the model using the train set and validated it with similar accuracy using both the train set and the valid set. My model was more accurate for the prediction of valid set，which means this model is available in a way.
+
+---
+Step III: Classiﬁcation
+Part III. Classiﬁcation Tree
+---
+### Classification Tree
+```{r}
+library(tidyverse)
+library(naniar)
+paris_listings <- read_csv('paris_listings.csv')
+XI_Arrondissement <- paris_listings %>% filter(host_neighbourhood=='XI Arrondissement')
+```
+
+```{r}
+XI2 <- subset(XI_Arrondissement, select = c(review_scores_rating, host_identity_verified, 
+                                            neighbourhood_cleansed, latitude, longitude, 
+                                            property_type, room_type, accommodates, 
+                                            bathrooms_text, bedrooms, beds, amenities, 
+                                            number_of_reviews, instant_bookable, price,
+                                            host_is_superhost,maximum_nights,minimum_nights,
+                                            host_has_profile_pic, host_acceptance_rate,
+                                            calculated_host_listings_count))
+data_tree <- XI2
+data_tree[data_tree == ''] <- NA
+data_tree <- drop_na(data_tree)
+colSums(is.na(data_tree))
+```
+
+```{r}
+library(rpart)
+library(rpart.plot)
+fivenum(data_tree$review_scores_rating)
+```
+```{r}
+data_tree$review_scores_rating <- cut(data_tree$review_scores_rating, 
+                                      breaks = c(-Inf,4.565, 4.8, Inf), 
+                                      labels = c("Under Average Rating",
+                                                 "Average Rating",
+                                                 "Above Average Rating"))
+```
+
+```{r}
+set.seed(333)
+train <- sample_frac(data_tree, 0.6)
+valid <- setdiff(data_tree, train)
+
+table(train$review_scores_rating)
+names(train)
+model_tree <- rpart(review_scores_rating~accommodates+bedrooms+beds+number_of_reviews
+                     +instant_bookable+price+host_is_superhost,
+                    method="class",xval=5,cp=0.00,data=train)
+
+printcp(model_tree)
+```
+```{r}
+#Find the Optimal CP
+options(scipen=999)
+cp <- printcp(model_tree)
+cp <- data.frame(cp)
+
+which.min(cp$xerror)
+which.min(cp$xstd)
+```
+
+```{r}
+plotcp(model_tree)
+```
+Based on the minimum x-error of cross-validation, we ended up choosing cp=0.0110442 as the optimal complexity parameter.
+```{r}
+library(bitops)
+library(rattle)
+model_tree2 <- rpart(review_scores_rating~accommodates+bedrooms+beds+number_of_reviews
+                     +instant_bookable+price+host_is_superhost,
+                     method = "class", cp=0.0110442,data=train)
+
+rpart.plot(model_tree2, type = 2, extra = 2,
+           under = FALSE, fallen.leaves = TRUE,
+           digits = 2, varlen = 0, faclen = 0, roundint = TRUE,
+           cex = NULL, tweak = 1,
+           clip.facs = FALSE, clip.right.labs = TRUE,
+           snip = FALSE,
+           box.palette = "auto", shadow.col = 0)
+```
+
+```{r}
+library(lattice)
+library(caret)
+pred.train<-predict(model_tree2,train[,c(8,10,11,13,14,15,16)],type="class")
+confusionMatrix(pred.train, train$review_scores_rating)
+```
+```{r}
+pred.valid<-predict(model_tree2,valid[,c(8,10,11,13,14,15,16)],type="class")
+confusionMatrix(pred.valid, valid$review_scores_rating)
+```
+
+Before starting the binning, I removed the NA values from the data. When I was binning the review_scores_rating, I found that the upper-quartile and the maximum value were the same, so I divided the data into three grades based on the lower-quartile and average, they are "Under Average Rating", "Average Rating" and "Above Average Rating" respectively.
+
+For the classification tree model, accommodate, bedrooms, beds, number_of_reviews, instant_bookable, price, host_is_superhost are what I chose before building the model. I think the reviews can most directly reflect the popularity or advantages and disadvantages of this house. Super host is the most direct recognition of landlords, which has of great reference value and cannot be faked. Housing characteristics such as accommodates, beds, bedrooms will also directly affect people's choice of houses. Instant_bookable and price are other two points that everyone needs to consider.
+
+After that, based on these data, a basic tree model was established, and then I started tree pruning. I choose the optimal cp value (0.0110442) based on the minimum x-error and use this CP value to build a more optimal tree model.
+
+Finally, I tested the accuracy on the training and valid sets, and our tree model achieved an accuracy of 0.5729 on the train data set and 0.5077 on the valid data set. Although the accuracy is not high, the closeness of these two numbers means that overfitting does not occur.
+
+---
+Step IV: Clustering
+---
+```{r}
+library(tidyverse)
+library(naniar)
+paris_listings <- read_csv('paris_listings.csv')
+XI_Arrondissement <- paris_listings %>% filter(host_neighbourhood=='XI Arrondissement')
+```
+```{r}
+library(dplyr)
+library(tidyr)
+
+XI <- subset(XI_Arrondissement, select = c(host_verifications, neighbourhood_cleansed, latitude, longitude, property_type, room_type, accommodates, bathrooms_text, bedrooms, beds, amenities, number_of_reviews, instant_bookable, price, host_is_superhost))
+```
+```{r}
+# fill in missing values for column 'bedrooms'
+XI$bedrooms <- ifelse(XI$beds == 1, 1, XI$bedrooms)
+XI$bedrooms <- ifelse(XI$beds == 2, 1, XI$bedrooms)
+sum(is.na(XI$bedrooms))
+```
+
+```{r}
+# drop missing values from beds and bedrooms
+XI <- XI %>% drop_na(beds, bedrooms)
+```
+
+```{r}
+# extract numbers from text
+XI <- XI %>% mutate(bathrooms = readr::parse_number(XI$bathrooms_text))
+# fill in missing values with 0.5
+XI$bathrooms[is.na(XI$bathrooms)] <- 0.5
+```
+
+```{r}
+XI_cl <- select(XI, c(accommodates, bedrooms, beds, number_of_reviews, price, bathrooms))
+XI_cl.norm <- sapply(XI_cl, scale)
+row.names(XI_cl.norm) <- row.names(XI_cl)
+```
+
+```{r}
+k.max <- 15
+
+wss <- sapply(1:k.max, 
+              function(k){kmeans(XI_cl.norm, k, nstart=50, iter.max=15)$tot.withinss})
+wss
+plot(1:k.max, wss, 
+     type = 'b', pch =20, frame = FALSE,
+     xlab = 'numbers of clusters K',
+     ylab = 'total within-cluster sum of squares')
+```
+```{r}
+set.seed(699)
+clusters <- kmeans(XI_cl.norm, 2)
+clusters$centers
+dist(clusters$centers)
+
+XI.clu <- cbind(XI_cl, clusters$cluster)
+colnames(XI.clu)[colnames(XI.clu) == 'clusters$cluster'] <- 'cluster'
+```
+```{r}
+library(dplyr)
+XI.clu %>% group_by(cluster) %>% summarise_all("mean")
+```
+```{r}
+XI.clu$cluster <- as.character(XI.clu$cluster)
+XI.clu$cluster[XI.clu$cluster == "1"]  <- "For Leisure"
+XI.clu$cluster[XI.clu$cluster == "2"]  <- "For Business"
+```
+
+Cluster 1: For Leisure Guests. For the rentals in this cluster, the guests are staying for leisure, and the rental should be more like a hotel to them. Just like hotels, it’s all about the little touches that make a stay special and that is why guests prefer to book an Airbnb. With a higher price, these rentals offer more accommodates, bedrooms and beds. They could also provide luxuriously soft bedding, toys for the little ones or a comprehensive guide to the city. 
+
+Cluster 2: For Business Travelers. For the rentals this cluster, the guests are usually business travelers, and they will have some different requirements. With a lower price, they want a quite work space and one bed is enough for them. A laptop-friendly work space, WiFi and extra chargers are vital. These rentals could also provide some information on transport services and taxi numbers, or free parking. 
+
+The variables used for k-means analysis are "accommodates, bedrooms, beds, number_of_reviews, price, bathrooms". We also tried different input variables combinations. For example, we tried to include "latitude" and "longitude" besides these variables, but we found that these values are very similar and have no help for the clustering process, so we decided to drop them. 
+
+In the Elbow method where an SSE line plot is drawn, the point from where the decrease in SSE starts looking linear is the value of k that is the best. From the Elbow chart, we can see that 2 might be the best k-value, and we also experimented with slightly different k-values, such as k-value of 3. We found that if we use the k-value of 3, there will be two similar clusters. With a k-value of 2, we can have 2 distinct and meaningful clusters. 
+
+
+```{r}
+XI.clu %>%
+  group_by(cluster) %>%
+  summarise_all('mean') %>%
+  gather('key', 'val', -cluster) %>%
+  ggplot(aes(x=factor(cluster), y=val)) + geom_col(aes(fill = cluster), show.legend = F) + facet_wrap(~key, scale='free') + theme(axis.text.x = element_text(angle = 10))
+```
+The faceted barplot shows the per-cluster comparison across each feature, which demonstrates those key differences among each of the two clusters. We can see that "For Leisure" cluster has higher values in all of these variables comparing to "For Business" cluster. 
+
+```{r}
+library(ggplot2)
+ggplot(data=XI.clu, aes(x=bedrooms, y=accommodates, shape=cluster, color=cluster)) + geom_point(size=2)
+```
+We can see that "For Leisure" cluster has more bedrooms and accommodates than "For Business" cluster. "For Business" cluster have no more than 2 bedrooms, while "For Leisure" cluster may have up to 5 bedrooms. 
+
+```{r}
+library(ggplot2)
+ggplot(data=XI.clu, aes(x=number_of_reviews, y=price, shape=cluster, color=cluster))+geom_point(size=2)
+```
+We can see that "For Leisure" cluster has a higher price than "For Business" cluster, and the "For Business" rentals with lower price are tend to have more number of reviews. If the price is too high, there will be less rentals, as well as the number of reviews. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
