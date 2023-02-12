@@ -1,3 +1,5 @@
+# Tiange Chang, Yi Feng, Shuhan Li, Yixiao Wang
+
 library(tidyverse)
 library(extraDistr)
 library(ggplot2)
@@ -6,8 +8,8 @@ capacity <- 36 + 15
 maxbus <- 46
 n <- 10000
 
-# At any given time, 25–35 buses were in active operation
-# peak hour
+# At any given time, 25–35 buses were in active operation peak hour
+
 # import data
 peak <- read_excel("Desktop/peak.xlsx")
 
@@ -18,11 +20,9 @@ peak[,4] <- round(peak[,4], 0)
 peak[,5] <- round(peak[,5], 0)
 peak <- as.data.frame(peak)
 
-# Hourly demand for transit followed a normal distribution with a standard 
-# deviation close to 20 per cent of the mean.
+# Hourly demand for transit followed a normal distribution with a standard deviation close to 20 per cent of the mean.
 
-# All simulation passenger # are shown in the table "df"
-# simulating # of passenger taking on bus on go round
+# All simulation passenger # are shown in the table "df" simulating # of passenger taking on bus on go round
 
 df <- as.data.frame(mean(rnorm(n = 10000, mean = peak[1, 2], 
                                sd = peak[1, 2] * 0.2)))
@@ -116,8 +116,7 @@ station <- c(1:21)
 
 ################################################################################
 
-# 1. Plot of # of passengers on the go-trip bus for going to next station at 
-# Peak Time
+# 1. Plot of # of passengers on the go-trip bus for going to next station at Peak Time
 plot(station, peak_sim$`p#for_go`, type = "l",
      main = paste("Number of Passengers on the go-trip bus", "\n", 
                   "for going to next station at Peak Time"),
@@ -137,8 +136,7 @@ bus_go_peak <- max(peak_sim$`p#for_go`) / capacity
 bus_go_peak # 23.66667
 # 24 buses for go-trip at peak time
 
-# 2. Plot of # of passengers on the back-trip bus for going to next station at 
-# Peak Time
+# 2. Plot of # of passengers on the back-trip bus for going to next station at Peak Time
 plot(station, peak_sim$`p#for_back`, type = "l",
      main = paste("Number of Passengers on the back-trip bus", "\n", 
                   "for going to next station at Peak Time"),
@@ -158,8 +156,7 @@ max(peak_sim$`p#for_back`)
 bus_back_peak <- max(peak_sim$`p#for_back`) / capacity
 bus_back_peak # 26
 
-# 3. Plot of # of passengers on the go-trip bus for going to next station at 
-# NonPeak Time
+# 3. Plot of # of passengers on the go-trip bus for going to next station at NonPeak Time
 plot(station, nonpeak_sim$`p#for_go`, type = "l",
      main = paste("Number of Passengers on the go-trip bus", "\n", 
                   "for going to next station at NonPeak Time"), 
@@ -179,8 +176,7 @@ max(nonpeak_sim$`p#for_go`)
 bus_go_nonpeak <- max(nonpeak_sim$`p#for_go`) / capacity
 bus_go_nonpeak # 8
 
-# 4. Plot of # of passengers on the back-trip bus for going to next station at 
-# NonPeak Time
+# 4. Plot of # of passengers on the back-trip bus for going to next station at NonPeak Time
 plot(station, nonpeak_sim$`p#for_back`, type = "l",
      main = paste("Number of Passengers on the back-trip bus", "\n", 
                   "for going to next station at NonPeak Time"),
@@ -234,6 +230,7 @@ npt / hwnb # 5.21 -> 6 nonpeak time back
 # nonpeak time total: 11
 
 # Peak:
+
 # By running the simulation, the optimal number of buses for peak time is 24 
 # buses for 'go', and 26 buses for 'back', 50 buses in total. Then we assume 
 # the average speed at peak time is 15 km/h, and the route length is 11.57 km. 
@@ -244,6 +241,7 @@ npt / hwnb # 5.21 -> 6 nonpeak time back
 # go, and 21 for peak time back. Total 40 buses.
 
 # Nonpeak:
+
 # By running the simulation, the optimal number of buses for nonpeak time is 8 
 # buses for 'go', and 9 buses for 'back', 17 buses in total. Then we assume 
 # the average speed at peak time is 20 km/h, and the route length is 11.57 km. 
